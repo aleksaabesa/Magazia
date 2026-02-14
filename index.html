@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magazia App</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    
+    <link rel="icon" type="image/jpeg" href="logo.jpg.jpg">
+    <link rel="apple-touch-icon" href="logo.jpg.jpg">
+
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #111; color: white; padding-bottom: 50px; }
+        .screen { background: #222; padding: 20px; border-radius: 15px; max-width: 380px; margin: 20px auto; border: 1px solid #333; }
+        input { display: block; width: 90%; margin: 10px auto; padding: 12px; background: #333; border: 1px solid #444; color: white; border-radius: 8px; }
+        button { width: 100%; padding: 15px; margin: 5px 0; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 16px; }
+        .btn-blue { background: #007bff; color: white; }
+        .btn-green { background: #28a745; color: white; }
+        .btn-red { background: #e74c3c; color: white; }
+        .btn-gray { background: #444; color: white; font-size: 13px; }
+        .hidden { display: none !important; }
+        .product-item { background: #2a2a2a; border: 1px solid #444; border-radius: 10px; padding: 10px; margin-top: 15px; }
+        svg { background: white; padding: 5px; border-radius: 5px; margin-top: 5px; max-width: 100%; }
+        .inst-box { background: #000; padding: 15px; border-radius: 10px; margin-top: 10px; text-align: left; font-size: 14px; border: 1px solid #007bff; display: none; }
+        #reader, #card-reader { width: 100%; border-radius: 10px; background: #000; }
+        #card-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+
+<div id="main-ui" class="screen">
+    <img src="logo.jpg.jpg" width="80" style="border-radius: 20px; margin-bottom: 10px;" alt="Logo">
+    <h2>მაღაზიის პანელი</h2>
+
+    <div id="add-section">
+        <input type="text" id="name" placeholder="პროდუქტის სახელი">
+        <input type="number" id="price" placeholder="ფასი">
+        <button class="btn-blue" onclick="save()">➕ ნივთის დამატება</button>
+    </div>
+
+    <div style="margin-top: 15px;">
+        <button class="btn-gray" onclick="showInst('ios')">🍏 iOS ინსტრუქცია</button>
+        <button class="btn-gray" onclick="showInst('android')">🤖 Android ინსტრუქცია</button>
+        
+        <div id="ios-inst" class="inst-box">
+            1. გახსენი Safari-ში.<br>
+            2. დააჭირე <b>"Share"</b> ღილაკს.<br>
+            3. აირჩიე <b>"Add to Home Screen"</b>.
+        </div>
+        <div id="android-inst" class="inst-box">
+            1. გახსენი Chrome-ში.<br>
+            2. დააჭირე <b>⋮</b> ღილაკს.<br>
+            3. აირჩიე <b>"Install app"</b>.
+        </div>
+    </div>
+
+    <div id="list"></div>
+    <button class="btn-green hidden" id="sbtn" onclick="startScan()">🔎 სკანირება</button>
+    <button class="btn-red hidden" id="cbtn" onclick="clearData()">🗑️ გასუფთავება</button>
+
+    <div id="scanner-ui" class="hidden">
+        <div id="reader"></div>
+        <button class="btn-red" onclick="location.reload()">გაუქმება</button>
+    </div>
+
+    <div id="info-section" class="hidden">
+        <h2 id="info-title"></h2>
+        <h3 id="info-price" style="color: #28a745;"></h3>
+        <button class="btn-blue" onclick="openCardPay()">💳 Pay with Card</button>
+        <button class="btn-green" onclick="payCash()">💵 Pay with Cash</button>
+        <button onclick="location.reload()">უკან</button>
+    </div>
+</div>
+
+<div id="card-modal" class="hidden">
+    <h1>დაადეთ ბარათი</h1>
+    <div id="card-reader" style="width: 300px; height: 300px;"></div>
+    <button class="btn-red" onclick="location.reload()" style="width: 80%; margin-top: 20px;">გაუქმება</button>
+</div>
+
+<script>
+    let products = JSON.parse(localStorage.getItem('myStore')) || [];
+    let currentProd = null;
+
+    function showInst(type) {
+        document.getElementById('ios-inst').style.display = 'none';
+        document.getElementById('android-inst').style.display = 'none';
+        document.getElementById(type + '-inst').style.display = 'block';
+    }
+
+    function save() {
+        const n = document.getElementById('name').value;
+        const p = document.getElementById('price').value;
+        if(!n || !p) return alert("შეავსე ველები!");
+        products.push({name: n, price: p, code: "BC"+Math.floor(Math.random()*9000000)});
+        localStorage.setItem('myStore', JSON.stringify(products));
+        location.reload();
+    }
+
+    function render() {
+        const c = document.getElementById('list');
+        if(products.length > 0) {
+            document.getElementById('sbtn').classList.remove('hidden');
+            document.getElementById('cbtn').classList.remove('hidden');
+        }
+        products.forEach((p, i) => {
+            const d = document.createElement('div');
+            d.className = "product-item";
+            d.innerHTML = `<b>${p.name}</b> - ${p.price}₾<br><svg id="b${i}"></svg>`;
+            c.appendChild(d);
+            JsBarcode("#b"+i, p.code, {height: 40, displayValue: true});
+        });
+    }
+
+    function startScan() {
+        document.getElementById('add-section').classList.add('hidden');
+        document.getElementById('list').classList.add('hidden');
+        document.getElementById('scanner-ui').classList.remove('hidden');
+        const s = new Html5Qrcode("reader");
+        s.start({facingMode:"environment"}, {fps:15, qrbox:250}, (t) => {
+            const f = products.find(x => x.code === t);
+            if(f) { currentProd = f; s.stop(); showInfo(); }
+        });
+    }
+
+    function showInfo() {
+        document.getElementById('scanner-ui').classList.add('hidden');
+        document.getElementById('info-section').classList.remove('hidden');
+        document.getElementById('info-title').innerText = currentProd.name;
+        document.getElementById('info-price').innerText = currentProd.price + "₾";
+    }
+
+    function openCardPay() {
+        document.getElementById('main-ui').classList.add('hidden');
+        document.getElementById('card-modal').classList.remove('hidden');
+        const cam = new Html5Qrcode("card-reader");
+        cam.start({facingMode:"environment"}, {fps:10}, ()=>{});
+        setTimeout(() => {
+            cam.stop();
+            document.getElementById('card-modal').innerHTML = "<h1>გადახდილია! ✅</h1><button class='btn-green' onclick='location.reload()'>დასრულება</button>";
+        }, 3000);
+    }
+
+    function payCash() { alert("ნაღდი ფული მიღებულია!"); location.reload(); }
+    function clearData() { if(confirm("წავშალო?")) { localStorage.clear(); location.reload(); } }
+    render();
+</script>
+</body>
+</html>
