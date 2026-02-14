@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magazia App Multi-Fix</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #111; color: white; }
+        .screen { background: #222; padding: 20px; border-radius: 15px; max-width: 380px; margin: 20px auto; border: 1px solid #333; }
+        input { display: block; width: 90%; margin: 10px auto; padding: 12px; background: #333; border: 1px solid #444; color: white; border-radius: 8px; }
+        button { width: 100%; padding: 15px; margin: 10px 0; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 16px; }
+        .btn-blue { background: #007bff; color: white; }
+        .btn-green { background: #28a745; color: white; }
+        .btn-red { background: #e74c3c; color: white; }
+        .hidden { display: none !important; }
+        #scanned-img { width: 100%; border-radius: 10px; margin-bottom: 15px; }
+        svg { background: white; padding: 10px; border-radius: 5px; margin: 10px 0; max-width: 100%; height: auto; }
+        .product-item { border-bottom: 2px solid #444; padding: 15px 10px; margin-bottom: 15px; background: #2a2a2a; border-radius: 8px; }
+        #card-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+
+<div id="main-ui" class="screen">
+    <h2>მაღაზიის პანელი</h2>
+
+    <div id="add-section">
+        <input type="text" id="name" placeholder="პროდუქტის სახელი">
+        <input type="number" id="price" placeholder="ფასი">
+        <input type="file" id="file" accept="image/*" onchange="handleImg()">
+        <button class="btn-blue" onclick="save()">ნივთის დამატება</button>
+    </div>
+
+    <hr style="border: 0.5px solid #444; margin: 20px 0;">
+
+    <div id="barcode-section" class="hidden">
+        <div id="products-container"></div>
+        <button class="btn-green" onclick="startScanner()">🔎 სკანირება</button>
+        <button class="btn-red" onclick="reset()">ყველას წაშლა</button>
+    </div>
+
+    <div id="scanner-ui" class="hidden">
+        <div id="reader" style="width: 100%;"></div>
+        <button class="btn-red" onclick="location.reload()">გაუქმება</button>
+    </div>
+
+    <div id="info-section" class="hidden">
+        <img id="scanned-img" src="">
+        <h2 id="info-title"></h2>
+        <h3 id="info-price" style="color: #28a745;"></h3>
+        <button class="btn-blue" onclick="openCardPay()">💳 Pay with Card</button>
+        <button class="btn-green" onclick="payCash()">💵 Pay with Cash</button>
+        <button onclick="location.reload()">უკან</button>
+    </div>
+</div>
+
+<div id="card-modal" class="hidden">
+    <h1>დაადეთ ბარათი</h1>
+    <div id="card-reader" style="width: 300px; height: 300px;"></div>
+    <button class="btn-red" onclick="location.reload()">გაუქმება</button>
+</div>
+
+<script>
+    let products = [];
+    let currentImgBase64 = ""; 
+    let html5QrCode;
+
+    window.onload = () => {
+        const saved = localStorage.getItem('productsData');
+        if (saved) {
+            products = JSON.parse(saved);
+            if (products.length > 0) showBarcodeSection();
+        }
+    };
+
+    function handleImg() {
+        const f = document.getElementById('file').files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 400;
+                canvas.height = img.height * (400 / img.width);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                currentImgBase64 = canvas.toDataURL('image/jpeg', 0.6);
+            };
+            img.src = e.target.result;
+        };
+        r.readAsDataURL(f);
+    }
+
+    function save() {
+        const nameVal = document.getElementById('name').value;
+        const priceVal = document.getElementById('price').value;
+        
+        if (!nameVal || !priceVal || !currentImgBase64) {
+            alert("შეავსეთ სახელი, ფასი და აირჩიეთ ფოტო!");
+            return;
+        }
+        
+        const newProd = {
+            name: nameVal,
+            price: priceVal,
+            img: currentImgBase64,
+            code: "BC" + Math.floor(10000000 + Math.random() * 90000000)
+        };
+
+        products.push(newProd);
+        localStorage.setItem('productsData', JSON.stringify(products));
+        
+        // ფორმის სრული გასუფთავება შემდეგი ნივთისთვის
+        document.getElementById('name').value = "";
+        document.getElementById('price').value = "";
+        document.getElementById('file').value = "";
+        currentImgBase64 = ""; // სურათის ცვლადის დაცლა!
+
+        showBarcodeSection();
+    }
+
+    function showBarcodeSection() {
+        document.getElementById('barcode-section').classList.remove('hidden');
+        const container = document.getElementById('products-container');
+        container.innerHTML = ""; 
+
+        products.forEach((prod, index) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = "product-item";
+            itemDiv.innerHTML = `
+                <div style="font-weight:bold; margin-bottom:5px;">${prod.name} - ${prod.price}₾</div>
+                <svg id="barcode-${index}"></svg>
+            `;
+            container.appendChild(itemDiv);
+            JsBarcode(`#barcode-${index}`, prod.code, { format: "CODE128", height: 40, displayValue: true });
+        });
+    }
+
+    function startScanner() {
+        document.getElementById('add-section').classList.add('hidden');
+        document.getElementById('barcode-section').classList.add('hidden');
+        document.getElementById('scanner-ui').classList.remove('hidden');
+        
+        html5QrCode = new Html5Qrcode("reader");
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            { fps: 20, qrbox: 250 },
+            (decodedText) => {
+                const found = products.find(p => p.code === decodedText);
+                if (found) {
+                    html5QrCode.stop().then(() => {
+                        document.getElementById('scanner-ui').classList.add('hidden');
+                        showProductInfo(found);
+                    });
+                } else {
+                    alert("ბარკოდი ვერ მოიძებნა!");
+                }
+            }
+        ).catch(() => alert("კამერა ვერ ჩაირთო!"));
+    }
+
+    function showProductInfo(prod) {
+        document.getElementById('info-section').classList.remove('hidden');
+        document.getElementById('info-title').innerText = prod.name;
+        document.getElementById('info-price').innerText = prod.price + "₾";
+        document.getElementById('scanned-img').src = prod.img;
+        document.getElementById('scanned-img').style.display = "block";
+    }
+
+    function openCardPay() {
+        document.getElementById('main-ui').classList.add('hidden');
+        document.getElementById('card-modal').classList.remove('hidden');
+        const cardCam = new Html5Qrcode("card-reader");
+        cardCam.start({ facingMode: "environment" }, { fps: 10 }, () => {});
+        setTimeout(() => {
+            cardCam.stop();
+            document.getElementById('card-modal').innerHTML = "<h1>გადახდილია! ✅</h1><button class='btn-green' onclick='location.reload()'>დასრულება</button>";
+        }, 3000);
+    }
+
+    function payCash() {
+        alert("ნაღდი ფული მიღებულია!");
+        location.reload();
+    }
+
+    function reset() {
+        if(confirm("წავშალო ყველა ნივთი?")) {
+            localStorage.clear();
+            location.reload();
+        }
+    }
+</script>
+
+</body>
+</html>
