@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magazia Ultra Fix</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #111; color: white; }
+        .screen { background: #222; padding: 20px; border-radius: 15px; max-width: 380px; margin: 10px auto; border: 1px solid #333; }
+        input { display: block; width: 90%; margin: 10px auto; padding: 12px; background: #333; border: 1px solid #444; color: white; border-radius: 8px; }
+        button { width: 100%; padding: 15px; margin: 5px 0; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        .btn-blue { background: #007bff; color: white; }
+        .btn-green { background: #28a745; color: white; }
+        .btn-red { background: #e74c3c; color: white; }
+        .hidden { display: none !important; }
+        .item { background: #2a2a2a; border-bottom: 1px solid #444; padding: 10px; margin-top: 5px; }
+        svg { background: white; padding: 5px; border-radius: 5px; width: 80%; }
+    </style>
+</head>
+<body>
+
+<div id="main-ui" class="screen">
+    <h3>ნივთების მართვა</h3>
+    <input type="text" id="name" placeholder="სახელი">
+    <input type="number" id="price" placeholder="ფასი">
+    <button class="btn-blue" onclick="add()">➕ დამატება</button>
+
+    <div id="list" style="margin-top:20px;"></div>
+    
+    <button class="btn-green hidden" id="sbtn" onclick="startScan()">🔎 სკანირება</button>
+    <button class="btn-red hidden" id="rbtn" onclick="clr()">🗑️ გასუფთავება</button>
+</div>
+
+<div id="scan-ui" class="hidden screen">
+    <div id="reader" style="width: 100%;"></div>
+    <button class="btn-red" onclick="location.reload()">უკან</button>
+</div>
+
+<div id="res-ui" class="hidden screen">
+    <h1 id="rt"></h1>
+    <h2 id="rp" style="color:#28a745"></h2>
+    <button class="btn-blue" onclick="alert('გადახდილია!')">💳 გადახდა</button>
+    <button class="btn-green" onclick="location.reload()">დასრულება</button>
+</div>
+
+<script>
+    // მონაცემების წამოღება
+    let products = JSON.parse(localStorage.getItem('myStore')) || [];
+
+    function render() {
+        const listDiv = document.getElementById('list');
+        listDiv.innerHTML = "";
+        
+        if (products.length > 0) {
+            document.getElementById('sbtn').classList.remove('hidden');
+            document.getElementById('rbtn').classList.remove('hidden');
+        }
+
+        products.forEach((p, i) => {
+            const d = document.createElement('div');
+            d.className = "item";
+            d.innerHTML = `<b>${p.name}</b> - ${p.price}₾ <br> <svg id="b${i}"></svg>`;
+            listDiv.appendChild(d);
+            JsBarcode("#b" + i, p.code, {height: 40, displayValue: true});
+        });
+    }
+
+    function add() {
+        const n = document.getElementById('name').value;
+        const p = document.getElementById('price').value;
+        
+        if (!n || !p) return alert("სახელი და ფასი შეიყვანე!");
+
+        const newP = {
+            name: n,
+            price: p,
+            code: "ID" + Math.floor(Math.random() * 90000 + 10000)
+        };
+
+        products.push(newP);
+        localStorage.setItem('myStore', JSON.stringify(products));
+        
+        // გასუფთავება და განახლება
+        document.getElementById('name').value = "";
+        document.getElementById('price').value = "";
+        render();
+    }
+
+    function startScan() {
+        document.getElementById('main-ui').classList.add('hidden');
+        document.getElementById('scan-ui').classList.remove('hidden');
+        
+        const scanner = new Html5Qrcode("reader");
+        scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+            const found = products.find(x => x.code === text);
+            if (found) {
+                scanner.stop();
+                document.getElementById('scan-ui').classList.add('hidden');
+                document.getElementById('res-ui').classList.remove('hidden');
+                document.getElementById('rt').innerText = found.name;
+                document.getElementById('rp').innerText = found.price + "₾";
+            }
+        });
+    }
+
+    function clr() {
+        if(confirm("წავშალო ყველაფერი?")) {
+            localStorage.clear();
+            location.reload();
+        }
+    }
+
+    render();
+</script>
+</body>
+</html>
