@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magazia App - Final Fix</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 0; margin: 0; background: #eceff1; }
+        .screen { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 400px; margin: 20px auto; min-height: 300px; }
+        input, .file-input { display: block; margin: 15px auto; padding: 12px; width: 90%; border: 1px solid #ddd; border-radius: 8px; }
+        button { padding: 15px; cursor: pointer; margin: 10px auto; border: none; border-radius: 8px; font-weight: bold; width: 100%; font-size: 16px; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-blue { background: #2980b9; color: white; }
+        .btn-red { background: #e74c3c; color: white; }
+        .hidden { display: none; }
+        #reader { width: 100%; border-radius: 10px; overflow: hidden; }
+        #scanned-img { width: 100%; max-height: 200px; object-fit: contain; border-radius: 10px; margin-bottom: 15px; }
+        .payment-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); color: white; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <div class="screen">
+        <h2>მაღაზიის პანელი</h2>
+        
+        <div id="add-section">
+            <input type="text" id="pName" placeholder="პროდუქტის სახელი">
+            <input type="number" id="pPrice" placeholder="ფასი (₾)">
+            <input type="file" id="pImage" accept="image/*" onchange="processImage()">
+            <button class="btn-blue" onclick="saveAndShow()">დამატება და შენახვა</button>
+        </div>
+
+        <div id="result-section" class="hidden">
+            <h3 id="res-name"></h3>
+            <p id="res-price"></p>
+            <svg id="barcode-img"></svg>
+            <button class="btn-green" onclick="startScanning()">🔎 სკანირება</button>
+            <button class="btn-red" onclick="resetApp()" style="width: 50%; font-size: 12px;">წაშლა</button>
+        </div>
+
+        <div id="scanner-section" class="hidden">
+            <div id="reader"></div>
+            <button class="btn-red" onclick="location.reload()">გაუქმება</button>
+        </div>
+
+        <div id="info-section" class="hidden">
+            <img id="scanned-img" src="">
+            <h2 id="info-name"></h2>
+            <h2 id="info-price" style="color: #27ae60;"></h2>
+            <hr>
+            <button class="btn-blue" onclick="openCardPayment()">💳 Pay with Card</button>
+            <button class="btn-green" onclick="payWithCash()">💵 Pay with Cash</button>
+        </div>
+    </div>
+
+    <div id="card-overlay" class="payment-overlay hidden">
+        <h1>დაადეთ ბარათი</h1>
+        <p>გადაუღეთ ფოტო ბარათს დასრულებისთვის</p>
+        <div id="card-scanner" style="width: 100%; max-width: 300px;"></div>
+        <button class="btn-red" onclick="location.reload()">გაუქმება</button>
+    </div>
+
+    <script>
+        let product = { name: "", price: "", code: "", image: "" };
+
+        window.onload = function() {
+            const saved = localStorage.getItem('product');
+            if (saved) {
+                product = JSON.parse(saved);
+                showResultScreen();
+            }
+        };
+
+        function processImage() {
+            const file = document.querySelector('input[type=file]').files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 400;
+                    canvas.height = img.height * (400 / img.width);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    product.image = canvas.toDataURL('image/jpeg', 0.6);
+                };
+                img.src = e.target.result;
+            };
+            if (file) reader.readAsDataURL(file);
+        }
+
+        function saveAndShow() {
+            product.name = document.getElementById('pName').value;
+            product.price = document.getElementById('pPrice').value;
+            if (!product.name || !product.price || !product.image) return alert("შეავსეთ ინფორმაცია!");
+            product.code = "BAR-" + Math.floor(Math.random() * 899999 + 100000);
+            localStorage.setItem('product', JSON.stringify(product));
+            showResultScreen();
+        }
+
+        function showResultScreen() {
+            document.getElementById('add-section').classList.add('hidden');
+            document.getElementById('result-section').classList.remove('hidden');
+            document.getElementById('res-name').innerText = product.name;
+            document.getElementById('res-price').innerText = product.price + " ₾";
+            JsBarcode("#barcode-img", product.code);
+        }
+
+        function startScanning() {
+            document.getElementById('result-section').classList.add('hidden');
+            document.getElementById('scanner-section').classList.remove('hidden');
+            const scanner = new Html5Qrcode("reader");
+            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+                if (text === product.code) {
+                    scanner.stop().then(() => {
+                        document.getElementById('scanner-section').classList.add('hidden');
+                        showProductInfo();
+                    });
+                } else {
+                    alert("ეს თქვენთვის არ არის!");
+                }
+            });
+        }
+
+        function showProductInfo() {
+            document.getElementById('info-section').classList.remove('hidden');
+            document.getElementById('info-name').innerText = product.name;
+            document.getElementById('info-price').innerText = product.price + " ₾";
+            document.getElementById('scanned-img').src = product.image;
+            document.getElementById('scanned-img').style.display = "block";
+        }
+
+        function openCardPayment() {
+            document.getElementById('card-overlay').classList.remove('hidden');
+            const cardCam = new Html5Qrcode("card-scanner");
+            cardCam.start({ facingMode: "environment" }, { fps: 10 }, () => {});
+            setTimeout(() => {
+                cardCam.stop();
+                document.getElementById('card-overlay').innerHTML = "<h1>გადახდილია! ✅</h1><button class='btn-green' onclick='location.reload()'>დასრულება</button>";
+            }, 3000);
+        }
+
+        function payWithCash() {
+            alert("გადახდა დადასტურებულია ნაღდი ფულით: " + product.price + "₾");
+            location.reload();
+        }
+
+        function resetApp() { localStorage.clear(); location.reload(); }
+    </script>
+</body>
+</html>
